@@ -1,0 +1,117 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+  cloud:
+    gateway:
+      # Allow a browser-based frontend (different origin) to call the Gateway.
+      # Demo-friendly: allows any origin. Tighten allowed-origin-patterns for production.
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOriginPatterns: "*"
+            allowedMethods: "*"
+            allowedHeaders: "*"
+            allowCredentials: false
+      discovery:
+        locator:
+          enabled: false # we define explicit routes below for clarity/control
+      routes:
+        # --- Public: auth endpoints (no JWT required to register/login) ---
+        - id: user-service-auth
+          uri: lb://user-service
+          predicates:
+            - Path=/api/auth/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                key-resolver: "#{@ipKeyResolver}"
+                redis-rate-limiter.replenishRate: 5
+                redis-rate-limiter.burstCapacity: 10
+
+        # --- Protected: user read endpoints require a valid JWT ---
+        - id: user-service-users
+          uri: lb://user-service
+          predicates:
+            - Path=/api/users/**
+          filters:
+            - JwtAuth
+
+        # --- Protected: resource CRUD requires a valid JWT ---
+        - id: resource-service
+          uri: lb://resource-service
+          predicates:
+            - Path=/api/resources/**
+          filters:
+            - JwtAuth
+
+        # --- Protected: booking CRUD requires a valid JWT ---
+        - id: booking-service
+          uri: lb://booking-service
+          predicates:
+            - Path=/api/bookings/**
+          filters:
+            - JwtAuth
+
+        # --- Phase 2: SOC event collection / alerts / RAG - left unauthenticated
+        #     since this is an internal monitoring interface, not a booking-system
+        #     business endpoint (consistent with the Swagger passthroughs below). ---
+        - id: soc-service
+          uri: lb://soc-service
+          predicates:
+            - Path=/api/soc/**
+
+        # --- Swagger UI passthroughs for each service (dev convenience) ---
+        - id: user-service-docs
+          uri: lb://user-service
+          predicates:
+            - Path=/docs/user-service/**
+          filters:
+            - RewritePath=/docs/user-service/(?<segment>.*), /$\{segment}
+        - id: resource-service-docs
+          uri: lb://resource-service
+          predicates:
+            - Path=/docs/resource-service/**
+          filters:
+            - RewritePath=/docs/resource-service/(?<segment>.*), /$\{segment}
+        - id: booking-service-docs
+          uri: lb://booking-service
+          predicates:
+            - Path=/docs/booking-service/**
+          filters:
+            - RewritePath=/docs/booking-service/(?<segment>.*), /$\{segment}
+        - id: soc-service-docs
+          uri: lb://soc-service
+          predicates:
+            - Path=/docs/soc-service/**
+          filters:
+            - RewritePath=/docs/soc-service/(?<segment>.*), /$\{segment}
+
+jwt:
+  secret: ${JWT_SECRET:this-is-a-demo-secret-key-please-change-in-production-1234567890}
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URI:http://localhost:8761/eureka/}
+  instance:
+    prefer-ip-address: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,gateway
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"

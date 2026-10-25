@@ -1,0 +1,70 @@
+server:
+  port: 8084
+
+spring:
+  application:
+    name: soc-service
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:socdb}
+    username: ${DB_USER:postgres}
+    password: ${DB_PASSWORD:postgres}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+
+neo4j:
+  uri: ${NEO4J_URI:bolt://localhost:7687}
+  username: ${NEO4J_USERNAME:neo4j}
+  password: ${NEO4J_PASSWORD:password}
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URI:http://localhost:8761/eureka/}
+  instance:
+    prefer-ip-address: true
+
+# Detection rule thresholds (spec 3.3) - kept configurable rather than
+# hardcoded so the report can explain exactly what each rule does.
+soc:
+  rules:
+    failed-login:
+      threshold: 5
+      window-minutes: 5
+      severity: HIGH
+    unauthorised-access:
+      threshold: 3
+      window-minutes: 5
+      severity: MEDIUM
+    abnormal-request-rate:
+      threshold: 20
+      window-minutes: 1
+      severity: MEDIUM
+    service-failure:
+      threshold: 3
+      window-minutes: 5
+      severity: HIGH
+  health-poll:
+    interval-ms: 30000
+    # The fixed list of services polled is in HealthPoller.SERVICES (a YAML
+    # list here would need @ConfigurationProperties, not @Value, to bind).
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html

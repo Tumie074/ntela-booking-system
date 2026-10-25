@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Online Booking System</title>
+<style>
+  :root {
+    --navy: #1F3864; --blue: #185FA5; --bg: #F5F6F8; --card: #FFFFFF;
+    --border: #DADFE6; --green: #1E7B34; --red: #B3261E; --grey: #667085;
+  }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, Segoe UI, Arial, sans-serif; background: var(--bg); margin: 0; color: #1c1c1c; }
+  header { background: var(--navy); color: white; padding: 18px 28px; display: flex; align-items: center; justify-content: space-between; }
+  header h1 { font-size: 19px; margin: 0; font-weight: 600; }
+  #authStatus { font-size: 13px; opacity: 0.9; }
+  #authStatus b { color: #9fd4ff; }
+  nav { display: flex; gap: 4px; background: white; border-bottom: 1px solid var(--border); padding: 0 24px; overflow-x: auto; }
+  nav button { border: none; background: none; padding: 14px 16px; font-size: 13.5px; cursor: pointer; color: var(--grey); border-bottom: 3px solid transparent; white-space: nowrap; }
+  nav button.active { color: var(--navy); border-bottom-color: var(--blue); font-weight: 600; }
+  main { max-width: 980px; margin: 24px auto; padding: 0 20px; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-bottom: 18px; }
+  .card h2 { margin-top: 0; font-size: 16px; color: var(--navy); }
+  .card h2 .refresh { float: right; padding: 4px 10px; font-size: 12.5px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; align-items: center; }
+  .row > * { flex: 1; min-width: 130px; }
+  input, select { padding: 9px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; }
+  button.action { background: var(--blue); color: white; border: none; padding: 9px 14px; border-radius: 6px; cursor: pointer; font-size: 13.5px; }
+  button.action:hover { background: var(--navy); }
+  button.action.secondary { background: white; color: var(--red); border: 1px solid var(--red); }
+  button.action.grey { background: white; color: var(--grey); border: 1px solid var(--border); }
+  button.small { padding: 4px 9px; font-size: 12px; margin-right: 4px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  th { color: var(--grey); font-weight: 600; background: #FAFBFC; }
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+  .badge.CONFIRMED { background: #E1F5EE; color: var(--green); }
+  .badge.CANCELLED { background: #FCEBEB; color: var(--red); }
+  .badge.available { background: #E1F5EE; color: var(--green); }
+  .badge.unavailable { background: #FAEEDA; color: #854F0B; }
+  #log { font-family: Consolas, monospace; font-size: 12.5px; background: #10151f; color: #b7e1c0; padding: 12px; border-radius: 8px; max-height: 300px; overflow-y: auto; white-space: pre-wrap; }
+  .msg { padding: 9px 12px; border-radius: 6px; font-size: 13.5px; margin-bottom: 10px; }
+  .msg.ok { background: #E1F5EE; color: var(--green); }
+  .msg.err { background: #FCEBEB; color: var(--red); }
+  .hint { font-size: 12px; color: var(--grey); margin-top: -4px; margin-bottom: 12px; }
+  .endpoint-tag { display: inline-block; font-family: Consolas, monospace; font-size: 11px; color: var(--blue); background: #EEF4FA; border-radius: 4px; padding: 2px 7px; margin-bottom: 10px; }
+  .sub { font-size: 12px; color: var(--grey); margin: 4px 0 10px; }
+  .editing-flag { background: #FFF6E0; border: 1px solid #E8C468; border-radius: 6px; padding: 6px 10px; font-size: 12.5px; margin-bottom: 10px; color: #7A5B00; }
+  .badge.HIGH { background: #FCEBEB; color: var(--red); }
+  .badge.MEDIUM { background: #FAEEDA; color: #854F0B; }
+  .badge.LOW { background: #EEF4FA; color: var(--blue); }
+  .evidence { font-family: Consolas, monospace; font-size: 12px; background: #F5F6F8; border: 1px solid var(--border); border-radius: 6px; padding: 10px; margin-top: 10px; white-space: pre-wrap; }
+  .answer { background: #EEF4FA; border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-top: 12px; font-size: 14px; line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Online Booking System</h1>
+  <div id="authStatus">Not logged in</div>
+</header>
+
+<nav>
+  <button class="tab active" data-panel="auth">Login / Register</button>
+  <button class="tab" data-panel="users">Users</button>
+  <button class="tab" data-panel="resources">Resources</button>
+  <button class="tab" data-panel="bookings">Bookings</button>
+  <button class="tab" data-panel="soc">SOC / Knowledge Graph</button>
+  <button class="tab" data-panel="log">Request Log</button>
+</nav>
+
+<main>
+
+  <!-- AUTH -->
+  <div id="panel-auth" class="panel active">
+    <div class="card">
+      <h2>Register</h2>
+      <div class="endpoint-tag">POST /api/auth/register</div>
+      <div class="row">
+        <input id="regUsername" placeholder="Username" value="intela">
+        <input id="regEmail" placeholder="Email" value="intela@example.com">
+        <input id="regPassword" type="password" placeholder="Password" value="password123">
+        <button class="action" onclick="register()">Create account</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Login</h2>
+      <div class="endpoint-tag">POST /api/auth/login</div>
+      <div class="row">
+        <input id="loginUsername" placeholder="Username" value="intela">
+        <input id="loginPassword" type="password" placeholder="Password" value="password123">
+        <button class="action" onclick="login()">Log in</button>
+      </div>
+      <div class="hint">On success you'll receive a JWT, which is stored and attached automatically to every request below.</div>
+    </div>
+    <div id="authMsg"></div>
+  </div>
+
+  <!-- USERS -->
+  <div id="panel-users" class="panel">
+    <div class="card">
+      <h2>Look up a user</h2>
+      <div class="row">
+        <input id="lookupUserId" type="number" placeholder="User ID">
+        <button class="action" onclick="lookupUserById()">Search by ID</button>
+      </div>
+      <div class="endpoint-tag">GET /api/users/{id}</div>
+      <div class="row">
+        <input id="lookupUsername" placeholder="Username">
+        <button class="action" onclick="lookupUserByUsername()">Search by username</button>
+      </div>
+      <div class="endpoint-tag">GET /api/users/by-username/{username}</div>
+      <div id="userLookupResult" class="sub"></div>
+    </div>
+    <div class="card">
+      <h2>All users <button class="action grey small refresh" onclick="loadUsers()">Refresh</button></h2>
+      <div class="endpoint-tag">GET /api/users</div>
+      <table id="usersTable"><thead><tr><th>ID</th><th>Username</th><th>Email</th><th>Role</th></tr></thead><tbody></tbody></table>
+    </div>
+  </div>
+
+  <!-- RESOURCES -->
+  <div id="panel-resources" class="panel">
+    <div class="card">
+      <h2 id="resourceFormTitle">Create a resource</h2>
+      <div class="endpoint-tag" id="resourceFormTag">POST /api/resources</div>
+      <div id="resourceEditFlag" style="display:none" class="editing-flag">Editing resource #<span id="resEditId"></span> — saving will update it instead of creating a new one. <button class="action grey small" onclick="cancelResourceEdit()">Cancel edit</button></div>
+      <div class="row">
+        <input id="resName" placeholder="Name (e.g. Research Server Room)">
+        <select id="resType">
+          <option>ROOM</option><option>VENUE</option><option>EQUIPMENT</option>
+        </select>
+        <input id="resLocation" placeholder="Location">
+        <input id="resCapacity" type="number" placeholder="Capacity" value="4">
+        <button class="action" id="resSubmitBtn" onclick="submitResource()">Create</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>All resources <button class="action grey small refresh" onclick="loadResources()">Refresh</button></h2>
+      <div class="endpoint-tag">GET /api/resources</div>
+      <table id="resourcesTable">
+        <thead><tr><th>ID</th><th>Name</th><th>Type</th><th>Location</th><th>Cap.</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="hint">
+        <b>View</b> shows the resource's full record (GET .../{id}). &nbsp;
+        <b>Edit</b> lets you update its details (PUT .../{id}). &nbsp;
+        <b>Toggle</b> flips whether it's currently available (PATCH .../availability). &nbsp;
+        <b>Delete</b> permanently removes it (DELETE .../{id}).
+      </div>
+    </div>
+  </div>
+
+  <!-- BOOKINGS -->
+  <div id="panel-bookings" class="panel">
+    <div class="card">
+      <h2>Create a booking</h2>
+      <div class="endpoint-tag">POST /api/bookings</div>
+      <div class="row">
+        <input id="bookResourceId" type="number" placeholder="Resource ID">
+        <input id="bookStart" type="datetime-local">
+        <input id="bookEnd" type="datetime-local">
+        <button class="action" onclick="createBooking()">Book</button>
+      </div>
+      <div class="hint">Booking as: <span id="currentUserLabel">not logged in</span> (userId auto-filled after login)</div>
+    </div>
+    <div class="card">
+      <h2>Look up bookings</h2>
+      <div class="row">
+        <input id="lookupBookingId" type="number" placeholder="Booking ID">
+        <button class="action" onclick="lookupBookingById()">Find by ID</button>
+      </div>
+      <div class="endpoint-tag">GET /api/bookings/{id}</div>
+      <div class="row">
+        <input id="lookupBookingUserId" type="number" placeholder="User ID">
+        <button class="action" onclick="lookupBookingsByUser()">Find by user</button>
+      </div>
+      <div class="endpoint-tag">GET /api/bookings/user/{userId}</div>
+      <div id="bookingLookupResult" class="sub"></div>
+    </div>
+    <div class="card">
+      <h2>All bookings <button class="action grey small refresh" onclick="loadBookings()">Refresh</button></h2>
+      <div class="endpoint-tag">GET /api/bookings</div>
+      <table id="bookingsTable">
+        <thead><tr><th>ID</th><th>User</th><th>Resource</th><th>Start</th><th>End</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="hint">
+        <b>Cancel</b> marks the booking as cancelled, keeping the record (PUT .../cancel). &nbsp;
+        <b>Delete</b> permanently removes the booking (DELETE .../{id}).
+      </div>
+    </div>
+  </div>
+
+  <!-- SOC / KNOWLEDGE GRAPH (Phase 2) -->
+  <div id="panel-soc" class="panel">
+    <div class="card">
+      <h2>Ask a security question (RAG over the knowledge graph)</h2>
+      <div class="endpoint-tag">POST /api/soc/ask</div>
+      <div class="hint">Template-based GraphRAG: your question is matched to a Cypher query against Neo4j, and the answer is generated directly from the graph results — no LLM involved. Try: "Why was this alert created?", "What controls mitigate credential attacks?", "Which services are affected if resource-service fails?", "Which users are linked to repeated failed logins?"</div>
+      <div class="row">
+        <input id="ragQuestion" placeholder='e.g. "What controls mitigate credential attacks?"' style="flex:4">
+        <button class="action" onclick="askRag()">Ask</button>
+      </div>
+      <div id="ragAnswer"></div>
+    </div>
+    <div class="card">
+      <h2>Open alerts <button class="action grey small refresh" onclick="loadAlerts()">Refresh</button></h2>
+      <div class="endpoint-tag">GET /api/soc/alerts</div>
+      <div class="hint">Raised automatically by the detection rules in soc-service once enough matching events have been collected (e.g. 5 failed logins in 5 minutes).</div>
+      <table id="alertsTable">
+        <thead><tr><th>Alert</th><th>Rule</th><th>Severity</th><th>Description</th><th>Recommended action</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h2>Recent SOC events <button class="action grey small refresh" onclick="loadSocEvents()">Refresh</button></h2>
+      <div class="endpoint-tag">GET /api/soc/events</div>
+      <table id="socEventsTable">
+        <thead><tr><th>Time</th><th>Service</th><th>Event type</th><th>Severity</th><th>Message</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- LOG -->
+  <div id="panel-log" class="panel">
+    <div class="card">
+      <h2>Request log</h2>
+      <div class="hint">Every call this page makes to the API Gateway, in order, for demo purposes.</div>
+      <div id="log">Waiting for activity…</div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+const API = "http://localhost:8080";
+let token = null, currentUsername = null, currentUserId = null;
+let editingResourceId = null;
+
+function switchTab(name) {
+  document.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b.dataset.panel === name));
+  document.querySelectorAll(".panel").forEach(p => p.classList.toggle("active", p.id === "panel-" + name));
+  if (name === "soc") { loadAlerts(); loadSocEvents(); }
+}
+document.querySelectorAll(".tab").forEach(b => b.onclick = () => switchTab(b.dataset.panel));
+
+function logLine(line) {
+  const el = document.getElementById("log");
+  const time = new Date().toLocaleTimeString();
+  el.textContent = `[${time}] ${line}\n` + el.textContent;
+}
+
+async function api(method, path, body) {
+  const headers = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = "Bearer " + token;
+  logLine(`${method} ${path}${token ? "  (with JWT)" : ""}`);
+  const res = await fetch(API + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
+  let data = null;
+  try { data = await res.json(); } catch (e) {}
+  logLine(`  -> ${res.status} ${res.statusText}`);
+  if (!res.ok) throw { status: res.status, data };
+  return data;
+}
+
+function showMsg(elId, text, ok) {
+  document.getElementById(elId).innerHTML = `<div class="msg ${ok ? 'ok' : 'err'}">${text}</div>`;
+}
+function val(id) { return document.getElementById(id).value; }
+function requireAuth() {
+  if (!token) { alert("Please log in first (Login / Register tab)."); return false; }
+  return true;
+}
+function describeError(e) {
+  if (e && e.status === 401) return "unauthorized — please log in again.";
+  if (e && e.data) return (typeof e.data === "string" ? e.data : JSON.stringify(e.data));
+  return e && e.message ? e.message : "unknown error";
+}
+
+/* ---------- AUTH ---------- */
+async function register() {
+  try {
+    await api("POST", "/api/auth/register", { username: val("regUsername"), email: val("regEmail"), password: val("regPassword") });
+    showMsg("authMsg", "Registered successfully. You can now log in.", true);
+  } catch (e) { showMsg("authMsg", "Register failed: " + describeError(e), false); }
+}
+
+async function login() {
+  try {
+    const data = await api("POST", "/api/auth/login", { username: val("loginUsername"), password: val("loginPassword") });
+    token = data.token; currentUsername = data.username;
+    document.getElementById("authStatus").innerHTML = `Logged in as <b>${currentUsername}</b> (${data.role})`;
+    showMsg("authMsg", "Login successful. JWT acquired and stored for subsequent requests.", true);
+    await resolveUserId();
+    loadUsers(); loadResources(); loadBookings();
+  } catch (e) { showMsg("authMsg", "Login failed: " + describeError(e), false); }
+}
+
+async function resolveUserId() {
+  try {
+    const u = await api("GET", "/api/users/by-username/" + encodeURIComponent(currentUsername));
+    currentUserId = u.id;
+    document.getElementById("currentUserLabel").textContent = `${currentUsername} (userId ${currentUserId})`;
+  } catch (e) { /* non-fatal */ }
+}
+
+/* ---------- USERS ---------- */
+async function loadUsers() {
+  try {
+    const list = await api("GET", "/api/users");
+    document.querySelector("#usersTable tbody").innerHTML = list.map(u => `
+      <tr><td>${u.id}</td><td>${u.username}</td><td>${u.email}</td><td>${u.role}</td></tr>`).join("")
+      || `<tr><td colspan="4" style="color:#999">No users yet.</td></tr>`;
+  } catch (e) { /* likely not logged in yet */ }
+}
+
+async function lookupUserById() {
+  if (!requireAuth()) return;
+  const id = val("lookupUserId");
+  if (!id) return;
+  try {
+    const u = await api("GET", `/api/users/${id}`);
+    document.getElementById("userLookupResult").textContent = JSON.stringify(u);
+  } catch (e) { document.getElementById("userLookupResult").textContent = "Not found / error: " + describeError(e); }
+}
+
+async function lookupUserByUsername() {
+  if (!requireAuth()) return;
+  const name = val("lookupUsername");
+  if (!name) return;
+  try {
+    const u = await api("GET", `/api/users/by-username/${encodeURIComponent(name)}`);
+    document.getElementById("userLookupResult").textContent = JSON.stringify(u);
+  } catch (e) { document.getElementById("userLookupResult").textContent = "Not found / error: " + describeError(e); }
+}
+
+/* ---------- RESOURCES ---------- */
+function cancelResourceEdit() {
+  editingResourceId = null;
+  document.getElementById("resourceEditFlag").style.display = "none";
+  document.getElementById("resourceFormTitle").textContent = "Create a resource";
+  document.getElementById("resourceFormTag").textContent = "POST /api/resources";
+  document.getElementById("resSubmitBtn").textContent = "Create";
+  document.getElementById("resName").value = "";
+  document.getElementById("resLocation").value = "";
+  document.getElementById("resCapacity").value = "4";
+}
+
+async function submitResource() {
+  if (!requireAuth()) return;
+  const body = { name: val("resName"), type: val("resType"), location: val("resLocation"), capacity: parseInt(val("resCapacity") || "1", 10) };
+  try {
+    if (editingResourceId) {
+      await api("PUT", `/api/resources/${editingResourceId}`, body);
+      cancelResourceEdit();
+    } else {
+      await api("POST", "/api/resources", body);
+    }
+    loadResources();
+  } catch (e) { alert("Save resource failed: " + describeError(e)); }
+}
+
+function startEditResource(r) {
+  editingResourceId = r.id;
+  document.getElementById("resourceEditFlag").style.display = "block";
+  document.getElementById("resEditId").textContent = r.id;
+  document.getElementById("resourceFormTitle").textContent = "Edit resource";
+  document.getElementById("resourceFormTag").textContent = "PUT /api/resources/" + r.id;
+  document.getElementById("resSubmitBtn").textContent = "Save changes";
+  document.getElementById("resName").value = r.name;
+  document.getElementById("resType").value = r.type;
+  document.getElementById("resLocation").value = r.location;
+  document.getElementById("resCapacity").value = r.capacity;
+  switchTab("resources");
+  window.scrollTo(0, 0);
+}
+
+async function viewResource(id) {
+  try {
+    const r = await api("GET", `/api/resources/${id}`);
+    alert("GET /api/resources/" + id + "\n\n" + JSON.stringify(r, null, 2));
+  } catch (e) { alert("View failed: " + describeError(e)); }
+}
+
+async function toggleAvailability(id, current) {
+  try {
+    await api("PATCH", `/api/resources/${id}/availability?available=${!current}`);
+    loadResources();
+  } catch (e) { alert("Toggle failed: " + describeError(e)); }
+}
+
+async function deleteResource(id) {
+  if (!confirm(`Delete resource #${id}?`)) return;
+  try { await api("DELETE", `/api/resources/${id}`); loadResources(); }
+  catch (e) { alert("Delete failed: " + describeError(e)); }
+}
+
+async function loadResources() {
+  try {
+    const list = await api("GET", "/api/resources");
+    window.__resources = list;
+    document.querySelector("#resourcesTable tbody").innerHTML = list.map(r => `
+      <tr>
+        <td>${r.id}</td><td>${r.name}</td><td>${r.type}</td><td>${r.location}</td><td>${r.capacity}</td>
+        <td><span class="badge ${r.available ? 'available' : 'unavailable'}">${r.available ? 'Available' : 'Unavailable'}</span></td>
+        <td>
+          <button class="action grey small" onclick="viewResource(${r.id})">View</button>
+          <button class="action grey small" onclick='startEditResource(${JSON.stringify(r).replace(/'/g, "&apos;")})'>Edit</button>
+          <button class="action grey small" onclick="toggleAvailability(${r.id}, ${r.available})">Toggle</button>
+          <button class="action secondary small" onclick="deleteResource(${r.id})">Delete</button>
+        </td>
+      </tr>`).join("") || `<tr><td colspan="7" style="color:#999">No resources yet.</td></tr>`;
+  } catch (e) { /* likely not logged in yet */ }
+}
+
+/* ---------- BOOKINGS ---------- */
+async function createBooking() {
+  if (!requireAuth()) return;
+  if (!currentUserId) { alert("Could not resolve your user ID yet — try logging in again."); return; }
+  try {
+    await api("POST", "/api/bookings", {
+      userId: currentUserId, resourceId: parseInt(val("bookResourceId"), 10),
+      startTime: new Date(val("bookStart")).toISOString(), endTime: new Date(val("bookEnd")).toISOString()
+    });
+    loadBookings();
+  } catch (e) { alert("Create booking failed: " + describeError(e)); }
+}
+
+async function lookupBookingById() {
+  if (!requireAuth()) return;
+  const id = val("lookupBookingId");
+  if (!id) return;
+  try {
+    const b = await api("GET", `/api/bookings/${id}`);
+    document.getElementById("bookingLookupResult").textContent = JSON.stringify(b);
+  } catch (e) { document.getElementById("bookingLookupResult").textContent = "Not found / error: " + describeError(e); }
+}
+
+async function lookupBookingsByUser() {
+  if (!requireAuth()) return;
+  const uid = val("lookupBookingUserId");
+  if (!uid) return;
+  try {
+    const list = await api("GET", `/api/bookings/user/${uid}`);
+    document.getElementById("bookingLookupResult").textContent = JSON.stringify(list);
+  } catch (e) { document.getElementById("bookingLookupResult").textContent = "Error: " + describeError(e); }
+}
+
+async function cancelBooking(id) {
+  try { await api("PUT", `/api/bookings/${id}/cancel`); loadBookings(); }
+  catch (e) { alert("Cancel failed: " + describeError(e)); }
+}
+
+async function deleteBooking(id) {
+  if (!confirm(`Delete booking #${id}?`)) return;
+  try { await api("DELETE", `/api/bookings/${id}`); loadBookings(); }
+  catch (e) { alert("Delete failed: " + describeError(e)); }
+}
+
+async function loadBookings() {
+  try {
+    const list = await api("GET", "/api/bookings");
+    document.querySelector("#bookingsTable tbody").innerHTML = list.map(b => `
+      <tr>
+        <td>${b.id}</td><td>${b.userId}</td><td>${b.resourceId}</td>
+        <td>${new Date(b.startTime).toLocaleString()}</td><td>${new Date(b.endTime).toLocaleString()}</td>
+        <td><span class="badge ${b.status}">${b.status}</span></td>
+        <td>
+          ${b.status === 'CONFIRMED' ? `<button class="action grey small" onclick="cancelBooking(${b.id})">Cancel</button>` : ''}
+          <button class="action secondary small" onclick="deleteBooking(${b.id})">Delete</button>
+        </td>
+      </tr>`).join("") || `<tr><td colspan="7" style="color:#999">No bookings yet.</td></tr>`;
+  } catch (e) { /* likely not logged in yet */ }
+}
+
+/* ---------- SOC / KNOWLEDGE GRAPH (Phase 2) ---------- */
+async function askRag() {
+  const q = val("ragQuestion");
+  if (!q) return;
+  document.getElementById("ragAnswer").innerHTML = `<div class="sub">Thinking…</div>`;
+  try {
+    const r = await api("POST", "/api/soc/ask", { question: q });
+    document.getElementById("ragAnswer").innerHTML = `
+      <div class="answer"><b>Answer:</b> ${r.answer}</div>
+      <div class="evidence"><b>Intent:</b> ${r.intent}
+<b>Retrieval method:</b> ${r.retrievalMethod}
+<b>Retrieved nodes:</b> ${r.retrievedNodes.join(", ") || "(none)"}
+<b>Retrieved relationships:</b>
+${r.retrievedRelationships.join("\n") || "(none)"}
+<b>Source documents:</b> ${r.sourceDocuments.join(", ") || "(none)"}</div>`;
+  } catch (e) {
+    document.getElementById("ragAnswer").innerHTML = `<div class="msg err">Ask failed: ${describeError(e)}</div>`;
+  }
+}
+
+async function loadAlerts() {
+  try {
+    const list = await api("GET", "/api/soc/alerts");
+    document.querySelector("#alertsTable tbody").innerHTML = list.map(a => `
+      <tr>
+        <td>${a.alertId}</td><td>${a.ruleName}</td>
+        <td><span class="badge ${a.severity}">${a.severity}</span></td>
+        <td>${a.description || ""}</td><td>${a.recommendedAction || ""}</td>
+      </tr>`).join("") || `<tr><td colspan="5" style="color:#999">No alerts raised yet — trigger one by failing a login 5 times in a row.</td></tr>`;
+  } catch (e) { /* soc-service may not be up yet */ }
+}
+
+async function loadSocEvents() {
+  try {
+    const list = await api("GET", "/api/soc/events");
+    document.querySelector("#socEventsTable tbody").innerHTML = list.slice(0, 30).map(ev => `
+      <tr>
+        <td>${new Date(ev.timestamp).toLocaleTimeString()}</td><td>${ev.serviceName}</td>
+        <td>${ev.eventType}</td><td><span class="badge ${ev.severity}">${ev.severity}</span></td>
+        <td>${ev.message || ""}</td>
+      </tr>`).join("") || `<tr><td colspan="5" style="color:#999">No events collected yet.</td></tr>`;
+  } catch (e) { /* soc-service may not be up yet */ }
+}
+</script>
+</body>
+</html>

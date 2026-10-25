@@ -1,0 +1,242 @@
+version: "3.9"
+
+networks:
+  booking-net:
+    driver: bridge
+
+volumes:
+  user-db-data:
+  resource-db-data:
+  booking-db-data:
+  soc-db-data:
+  neo4j-data:
+
+services:
+
+  # ---------- Databases (Database-per-Service pattern) ----------
+  user-db:
+    image: postgres:16-alpine
+    container_name: user-db
+    environment:
+      POSTGRES_DB: userdb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - user-db-data:/var/lib/postgresql/data
+    networks: [booking-net]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  resource-db:
+    image: postgres:16-alpine
+    container_name: resource-db
+    environment:
+      POSTGRES_DB: resourcedb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - resource-db-data:/var/lib/postgresql/data
+    networks: [booking-net]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  booking-db:
+    image: postgres:16-alpine
+    container_name: booking-db
+    environment:
+      POSTGRES_DB: bookingdb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - booking-db-data:/var/lib/postgresql/data
+    networks: [booking-net]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ---------- Redis (backs the Gateway's rate limiter) ----------
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    networks: [booking-net]
+
+  # ---------- Phase 2: SOC event database (Database-per-Service pattern) ----------
+  soc-db:
+    image: postgres:16-alpine
+    container_name: soc-db
+    environment:
+      POSTGRES_DB: socdb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - soc-db-data:/var/lib/postgresql/data
+    networks: [booking-net]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ---------- Phase 2: Neo4j knowledge graph ----------
+  neo4j:
+    image: neo4j:5.24-community
+    container_name: neo4j
+    environment:
+      NEO4J_AUTH: neo4j/socgraphpassword
+      NEO4J_server_memory_pagecache_size: 256m
+    ports:
+      - "7474:7474" # Neo4j Browser (http://localhost:7474)
+      - "7687:7687" # Bolt (driver connections)
+    volumes:
+      - neo4j-data:/data
+    networks: [booking-net]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ---------- Service Registry ----------
+  eureka-server:
+    build: ./eureka-server
+    container_name: eureka-server
+    ports:
+      - "8761:8761"
+    networks: [booking-net]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8761/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---------- Domain Services ----------
+  user-service:
+    build: ./user-service
+    container_name: user-service
+    ports:
+      - "8081:8081"
+    environment:
+      DB_HOST: user-db
+      DB_PORT: 5432
+      DB_NAME: userdb
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      EUREKA_URI: http://eureka-server:8761/eureka/
+      JWT_SECRET: this-is-a-demo-secret-key-please-change-in-production-1234567890
+    depends_on:
+      user-db:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+    networks: [booking-net]
+
+  resource-service:
+    build: ./resource-service
+    container_name: resource-service
+    ports:
+      - "8082:8082"
+    environment:
+      DB_HOST: resource-db
+      DB_PORT: 5432
+      DB_NAME: resourcedb
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      EUREKA_URI: http://eureka-server:8761/eureka/
+    depends_on:
+      resource-db:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+    networks: [booking-net]
+
+  booking-service:
+    build: ./booking-service
+    container_name: booking-service
+    ports:
+      - "8083:8083"
+    environment:
+      DB_HOST: booking-db
+      DB_PORT: 5432
+      DB_NAME: bookingdb
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      EUREKA_URI: http://eureka-server:8761/eureka/
+    depends_on:
+      booking-db:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+      resource-service:
+        condition: service_started
+    networks: [booking-net]
+
+  # ---------- Phase 2: SOC event collection, detection rules, alerting, knowledge graph + RAG ----------
+  soc-service:
+    build: ./soc-service
+    container_name: soc-service
+    ports:
+      - "8084:8084"
+    environment:
+      DB_HOST: soc-db
+      DB_PORT: 5432
+      DB_NAME: socdb
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      EUREKA_URI: http://eureka-server:8761/eureka/
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USERNAME: neo4j
+      NEO4J_PASSWORD: socgraphpassword
+    depends_on:
+      soc-db:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+    networks: [booking-net]
+
+  # ---------- Frontend (simple static UI calling the Gateway) ----------
+  frontend:
+    image: nginx:alpine
+    container_name: frontend
+    ports:
+      - "3001:80"
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+    networks: [booking-net]
+    depends_on:
+      - api-gateway
+
+  # ---------- API Gateway (single entry point) ----------
+  api-gateway:
+    build: ./api-gateway
+    container_name: api-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      EUREKA_URI: http://eureka-server:8761/eureka/
+      JWT_SECRET: this-is-a-demo-secret-key-please-change-in-production-1234567890
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      user-service:
+        condition: service_started
+      resource-service:
+        condition: service_started
+      booking-service:
+        condition: service_started
+      soc-service:
+        condition: service_started
+    networks: [booking-net]
